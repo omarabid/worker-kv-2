@@ -30,6 +30,8 @@ impl Future for InnerFuture {
     }
 }
 
+unsafe impl Send for InnerFuture {}
+
 struct InnerFuture2 {
     fut: Pin<Box<dyn Future<Output = Result<JsValue, KvError>> + 'static>>,
 }
