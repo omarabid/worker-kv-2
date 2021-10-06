@@ -4,7 +4,54 @@ use serde_json::Value;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
+use std::future::Future;
+use std::pin::Pin;
+
 use crate::{KvError, ListResponse};
+
+struct InnerFuture {
+    fut: Pin<Box<dyn Future<Output = Result<JsValue, JsValue>> + 'static>>,
+}
+
+impl InnerFuture {
+    fn new<F: Future<Output = Result<JsValue, JsValue>> + 'static>(fut: F) -> Pin<Box<Self>> {
+        Box::pin(Self { fut: Box::pin(fut) })
+    }
+}
+
+impl Future for InnerFuture {
+    type Output = Result<JsValue, JsValue>;
+
+    fn poll(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        unsafe { Pin::new_unchecked(&mut self.fut).poll(cx) }
+    }
+}
+
+struct InnerFuture2 {
+    fut: Pin<Box<dyn Future<Output = Result<JsValue, KvError>> + 'static>>,
+}
+
+impl InnerFuture2 {
+    fn new<F: Future<Output = Result<JsValue, KvError>> + 'static>(fut: F) -> Pin<Box<Self>> {
+        Box::pin(Self { fut: Box::pin(fut) })
+    }
+}
+
+impl Future for InnerFuture2 {
+    type Output = Result<JsValue, KvError>;
+
+    fn poll(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        unsafe { Pin::new_unchecked(&mut self.fut).poll(cx) }
+    }
+}
+
+unsafe impl Send for InnerFuture2 {}
 
 /// A builder to configure put requests.
 #[derive(Debug, Clone, Serialize)]
@@ -144,13 +191,23 @@ impl GetOptionsBuilder {
             .get_function
             .call2(&self.this, &self.name, &options_object)?
             .into();
-        Ok(JsFuture::from(promise).await.map_err(KvError::from)?)
+
+        let box_future = InnerFuture::new(JsFuture::from(promise));
+        unsafe {
+            Ok(Pin::new_unchecked(box_future).await.map_err(KvError::from)?)
+        }
+
+       // Ok(JsFuture::from(promise).await.map_err(KvError::from)?)
     }
 
     /// Gets the value as a string.
     pub async fn text(self) -> Result<Option<String>, KvError> {
-        let value = self.value_type(GetValueType::Text).get().await?;
-        Ok(value.as_string())
+        //let value = self.value_type(GetValueType::Text).get().await?;
+        let box_future = InnerFuture2::new(self.value_type(GetValueType::Text).get());
+        unsafe {
+            let value = Pin::new_unchecked(box_future).await?.as_string();
+            Ok(value)
+        }
     }
 
     /// Tries to deserialize the inner text to the generic type.
