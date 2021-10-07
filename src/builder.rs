@@ -31,6 +31,7 @@ impl Future for InnerFuture {
 }
 
 unsafe impl Send for InnerFuture {}
+unsafe impl Sync for InnerFuture {}
 
 struct InnerFuture2 {
     fut: Pin<Box<dyn Future<Output = Result<JsValue, KvError>> + 'static>>,
@@ -54,6 +55,7 @@ impl Future for InnerFuture2 {
 }
 
 unsafe impl Send for InnerFuture2 {}
+unsafe impl Sync for InnerFuture2 {}
 
 /// A builder to configure put requests.
 #[derive(Debug, Clone, Serialize)]
